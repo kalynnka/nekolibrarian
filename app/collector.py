@@ -9,7 +9,7 @@ TMessage = TypeVar("TMessage")
 TResult = TypeVar("TResult")
 
 
-class MessageBatcher(Generic[TMessage, TResult]):
+class MessageBatchHandler(Generic[TMessage, TResult]):
     """
     Batches messages over a time period before processing them together.
 
