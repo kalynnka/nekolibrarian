@@ -1,0 +1,62 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspaces:cached
+    # Overrides default command so things don't shut down after the process ends.
+    command: sleep infinity
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - neko_librarian
+
+    # Use "forwardPorts" in **devcontainer.json** to forward an app port locally.
+    # (Adding the "ports" property to this file will not forward from a Codespace.)
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - neko_librarian
+
+    # Add "forwardPorts": ["5432"] to **devcontainer.json** to forward PostgreSQL locally.
+    # (Adding the "ports" property to this file will not forward from a Codespace.)
+
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: always
+    # mac_address: 02:42:ac:11:00:02  # 添加MAC地址固化配置
+    environment:
+      - NAPCAT_UID=${NAPCAT_UID:-0}
+      - NAPCAT_GID=${NAPCAT_GID:-0}
+    ports:
+      - 3001:3001
+      - 6099:6099
+    volumes:
+      - ./napcat/config:/app/napcat/config
+      - ./ntqq:/app/.config/QQ
+    networks:
+      - neko_librarian
+    
+
+volumes:
+  postgres-data:
+    driver: local
+networks:
+  neko_librarian:
+    driver: bridge
