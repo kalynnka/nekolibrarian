@@ -1,6 +1,9 @@
 # Project specific
 config.yaml
 
+# mijia-api
+miapi/
+
 # napcat
 ntqq/
 napcat/
