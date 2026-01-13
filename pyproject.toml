@@ -8,6 +8,7 @@ dependencies = [
     "arcanus>=0.1.0",
     "mijiaapi>=3.0.3",
     "ncatbot>=4.4.1.post1",
+    "pixivpy-async>=1.2.14",
     "pydantic-ai>=1.40.0",
     "python-dotenv>=1.2.1",
 ]

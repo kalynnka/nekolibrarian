@@ -1,12 +1,50 @@
 import datetime
+from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
+from ncatbot.core import Image, Text
+from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.gemini import GeminiModelSettings
 
+from app.tools import pixiv
+
 # Load environment variables from .env file
 load_dotenv()
+
+
+# Output message segment types for QQ messages
+class TextSegment(BaseModel):
+    """Text message segment."""
+
+    type: Literal["text"] = "text"
+    text: str
+
+    def to_message_segment(self):
+        return Text(self.text)
+
+
+class ImageSegment(BaseModel):
+    """Image message segment with local file path."""
+
+    type: Literal["image"] = "image"
+    file: Path
+    name: str | None = None
+    summary: str | None = None
+
+    def to_message_segment(self):
+        return Image(
+            file=str(self.file),
+            file_name=self.name or self.file.name,
+            summary=self.summary or "[图片]",
+        )
+
+
+# Union type for message segments
+MessageSegment = TextSegment | ImageSegment
+
 
 # System prompt for QQ chatbot
 GROUP_SYSTEM_PROMPT = """
@@ -35,13 +73,23 @@ GROUP_SYSTEM_PROMPT = """
     - 避免在回答中使用语气词, 如“呢”, “啊”等
     - 保持谦虚和礼貌, 遇到冒犯时可以适当反击但不要过分激烈
     - 涉及到专业性问答时保持专业性, 不玩梗
-"""
+
+3. 输出格式：
+    - 你的输出是一个消息段列表, 可以包含文本和图片
+    - 文本消息: {"type": "text", "text": "你的文本内容"}
+    - 图片消息: {"type": "image", "file": "图片的本地路径", "name": "文件名", "summary": "图片描述"}
+      - file: 使用工具返回的local_path (必填)
+      - name: 图片文件名, 可选
+      - summary: 图片的简短描述, 用于显示在聊天中, 可选
+    - 当需要发送图片时, 使用工具获取图片并将返回的local_path放入image消息段
+    - 示例: [{"type": "text", "text": "给你找了一张图"}, {"type": "image", "file": "/path/to/image.jpg", "name": "artwork.jpg", "summary": "一张可爱的插画"}]"""
+
 
 chat_agent = Agent(
     # model="deepseek:deepseek-chat",
     model="google-gla:gemini-3-flash-preview",
     system_prompt=GROUP_SYSTEM_PROMPT,
-    output_type=str,
+    output_type=list[MessageSegment],
     model_settings=GeminiModelSettings(
         temperature=1.2,
         gemini_thinking_config={"thinking_budget": 1024},
@@ -59,3 +107,7 @@ async def current_time(ctx: RunContext[None]) -> datetime.datetime:
         Current datetime in Asia/Shanghai timezone
     """
     return datetime.datetime.now(ZoneInfo("Asia/Shanghai"))
+
+
+chat_agent.tool(pixiv.search_pixiv_illustrations)
+chat_agent.tool(pixiv.get_pixiv_ranking)

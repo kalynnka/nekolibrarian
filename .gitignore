@@ -13,6 +13,9 @@ plugins/
 logs/
 data/
 
+# pixiv
+pixiv/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

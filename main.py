@@ -6,11 +6,13 @@ from pathlib import Path
 from typing import DefaultDict, Deque, Dict, List
 
 from ncatbot.core import BotClient, GroupMessageEvent, MetaEvent, PrivateMessage
+from ncatbot.core.event.message_segment import MessageArray
 from pydantic_ai import ModelRequest
 from pydantic_ai.messages import ModelMessage
 
 from app import agents
 from app.collector import MessageBatchHandler
+from app.tools import pixiv
 
 logger = logging.getLogger("NekoLibrarian")
 bot = BotClient()
@@ -18,7 +20,7 @@ bot = BotClient()
 
 # Store a batcher for each user
 private_handlers: Dict[int, MessageBatchHandler[PrivateMessage, None]] = {}
-group_handlers: Dict[int, MessageBatchHandler[GroupMessageEvent, str]] = {}
+group_handlers: Dict[int, MessageBatchHandler[GroupMessageEvent, list]] = {}
 
 # TODO: persist chat memory to PG
 MEMORY_FILE = Path("./data/chat_memory.pkl")
@@ -60,8 +62,8 @@ def get_private_batcher(
 @lru_cache(maxsize=32)
 def get_group_batcher(
     group_id: int | str,
-) -> MessageBatchHandler[GroupMessageEvent, str]:
-    """Get or create a batcher for a specific group"""
+) -> MessageBatchHandler[GroupMessageEvent, list]:
+    """Get or create a batcher for a specific group""" ""
     if group_id not in group_handlers:
 
         async def handle_batch(messages: List[GroupMessageEvent]):
@@ -93,19 +95,6 @@ def get_group_batcher(
     return group_handlers[int(group_id)]
 
 
-# def is_group_at(event) -> bool:
-#     if not isinstance(event, GroupMessageEvent):
-#         return False
-#     bot_id = event.self_id
-#     for message_spiece in event.message.messages:
-#         if (
-#             message_spiece.msg_seg_type == "at"
-#             and getattr(message_spiece, "qq", None) == bot_id
-#         ):
-#             return True
-#     return False
-
-
 @bot.on_private_message()  # pyright: ignore[reportArgumentType]
 async def handle_private_message(msg: PrivateMessage):
     get_private_batcher(msg.user_id).push(msg)
@@ -116,21 +105,31 @@ async def handle_group_message(event: GroupMessageEvent):
     batch_handler = get_group_batcher(event.group_id)
     batch_handler.push(event, handle=False)
     if event.message.is_user_at(user_id=event.self_id):
-        reply = await batch_handler.consume()
-        if not (reply := reply.strip()):
+        segments = await batch_handler.consume()
+        if not segments:
             logger.warning(
                 f"Empty reply generated for group at message: {event.raw_message}."
             )
             return
+
+        # Convert agent output to MessageArray
+        msg_array = MessageArray([seg.to_message_segment() for seg in segments])
+
+        if not msg_array.messages:
+            logger.warning(
+                f"No valid message segments for group at message: {event.raw_message}."
+            )
+            return
+
         await bot.api.post_group_msg(
             group_id=event.group_id,
-            text=reply,
+            rtf=msg_array,
             reply=event.message_id,
         )
 
 
 @bot.on_startup()  # pyright: ignore[reportArgumentType]
-async def load_memories(metaevent: MetaEvent):
+async def startup(metaevent: MetaEvent):
     logger.info("Loading chat memories...")
     if MEMORY_FILE.exists():
         try:
@@ -141,9 +140,13 @@ async def load_memories(metaevent: MetaEvent):
         except Exception as e:
             logger.warning(f"Failed to load chat memories: {e}")
 
+    logger.info("Logging into Pixiv...")
+    await pixiv.login()
+    logger.info("Pixiv login complete.")
+
 
 @bot.on_shutdown()  # pyright: ignore[reportArgumentType]
-async def save_memories(metaevent: MetaEvent):
+async def shutdown(metaevent: MetaEvent):
     logger.info("Saving chat memories...")
     try:
         MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -152,6 +155,11 @@ async def save_memories(metaevent: MetaEvent):
         logger.info(f"Saved {len(in_memory_memory)} chat memories to {MEMORY_FILE}")
     except Exception as e:
         logger.warning(f"Failed to save chat memories: {e}")
+
+    if pixiv.client:
+        logger.info("Closing Pixiv client...")
+        await pixiv.client.close()
+        logger.info("Pixiv client closed.")
 
 
 if __name__ == "__main__":
