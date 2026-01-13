@@ -7,11 +7,11 @@ from typing import DefaultDict, Deque, Dict, List
 
 from ncatbot.core import BotClient, GroupMessageEvent, MetaEvent, PrivateMessage
 from ncatbot.core.event.message_segment import MessageArray
-from pydantic_ai import ModelRequest
-from pydantic_ai.messages import ModelMessage
+from pydantic_ai.messages import ModelMessage, ModelRequest
 
 from app import agents
 from app.collector import MessageBatchHandler
+from app.configs import config
 from app.tools import pixiv
 
 logger = logging.getLogger("NekoLibrarian")
@@ -25,11 +25,11 @@ group_handlers: Dict[int, MessageBatchHandler[GroupMessageEvent, list]] = {}
 # TODO: persist chat memory to PG
 MEMORY_FILE = Path("./data/chat_memory.pkl")
 in_memory_memory: DefaultDict[int, Deque[ModelMessage]] = defaultdict(
-    lambda: deque(maxlen=10)
+    lambda: deque(maxlen=config.memory_message_length)
 )
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=config.batch_handler_lru_size)
 def get_private_batcher(
     user_id: int | str,
 ) -> MessageBatchHandler[PrivateMessage, None]:
@@ -59,7 +59,7 @@ def get_private_batcher(
     return private_handlers[int(user_id)]
 
 
-@lru_cache(maxsize=32)
+@lru_cache(maxsize=config.batch_handler_lru_size)
 def get_group_batcher(
     group_id: int | str,
 ) -> MessageBatchHandler[GroupMessageEvent, list]:

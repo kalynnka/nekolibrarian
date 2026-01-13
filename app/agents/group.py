@@ -1,7 +1,6 @@
 import datetime
 from pathlib import Path
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 from ncatbot.core import Image, Text
@@ -9,6 +8,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.gemini import GeminiModelSettings
 
+from app.schemas import _now_shanghai
 from app.tools import pixiv
 
 # Load environment variables from .env file
@@ -106,7 +106,7 @@ async def current_time(ctx: RunContext[None]) -> datetime.datetime:
     Returns:
         Current datetime in Asia/Shanghai timezone
     """
-    return datetime.datetime.now(ZoneInfo("Asia/Shanghai"))
+    return _now_shanghai()
 
 
 chat_agent.tool(pixiv.search_pixiv_illustrations)

@@ -1,21 +1,15 @@
 import asyncio
 import logging
-import os
 from pathlib import Path
 from typing import Literal, Optional
 
-from dotenv import load_dotenv
 from pixivpy_async import AppPixivAPI, PixivClient
 from pydantic import BaseModel
 from pydantic_ai import RunContext
 
-# Load environment variables from .env file
-load_dotenv()
+from app.configs import pixiv_config
 
 logger = logging.getLogger("pixiv")
-
-PIXIV_TOKEN_FILE = Path("./pixiv/token")
-PIXIV_IMAGE_DIR = Path("./pixiv/images")
 
 
 class PixivImageUrls(BaseModel):
@@ -54,7 +48,7 @@ client: Optional[PixivClient] = None
 async def login():
     client = PixivClient()
     api.session = client.start()
-    return await api.login(refresh_token=os.getenv("PIXIV_REFRESH_TOKEN", ""))
+    return await api.login(refresh_token=pixiv_config.refresh_token)
 
 
 async def download_image(image_url: str) -> Path | None:
@@ -68,7 +62,7 @@ async def download_image(image_url: str) -> Path | None:
         Path to the local image file, or None if download failed
     """
     # Extract filename from URL (e.g., 12345678_p0.jpg)
-    cache_path = PIXIV_IMAGE_DIR / image_url.split("/")[-1]
+    cache_path = pixiv_config.image_dir / image_url.split("/")[-1]
 
     # Check cache first
     if cache_path.exists():
@@ -76,12 +70,12 @@ async def download_image(image_url: str) -> Path | None:
         return cache_path
 
     # Ensure directory exists
-    PIXIV_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    pixiv_config.image_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         await api.download(
             image_url,
-            path=str(PIXIV_IMAGE_DIR),
+            path=str(pixiv_config.image_dir),
             name=cache_path.name,
         )
         logger.info(f"Downloaded image: {cache_path}")
@@ -100,7 +94,7 @@ async def search_pixiv_illustrations(
 
     Args:
         keyword: The search keyword or tag (can be Japanese or English)
-        limit: Maximum number of results to return (default 3, max 8)
+        limit: Maximum number of results to return (default 3, max from config)
 
     Returns:
         PixivSearchResult containing illustration metadata and local file paths
@@ -110,7 +104,7 @@ async def search_pixiv_illustrations(
     if not result.illusts:
         return PixivSearchResult(query=keyword, illusts=[])
 
-    illusts = result.illusts[: min(limit, 8)]
+    illusts = result.illusts[: min(limit, pixiv_config.search_limit)]
 
     # Download images in parallel
     image_urls = [illust.image_urls.medium for illust in illusts]
@@ -150,7 +144,7 @@ async def get_pixiv_ranking(
     Args:
         mode: Ranking mode - 'day' (daily), 'week' (weekly), 'month' (monthly),
               'day_male' (daily male), 'day_female' (daily female), 'day_r18' (R18 daily)
-        limit: Maximum number of results to return (default 5, max 10)
+        limit: Maximum number of results to return (default 5, max from config)
 
     Returns:
         PixivSearchResult containing ranked illustration metadata and local file paths
@@ -169,7 +163,7 @@ async def get_pixiv_ranking(
     if not result.illusts:
         return PixivSearchResult(query=mode_names.get(mode, mode), illusts=[])
 
-    illusts = result.illusts[: min(limit, 10)]
+    illusts = result.illusts[: min(limit, pixiv_config.ranking_limit)]
 
     # Download images in parallel
     image_urls = [illust.image_urls.medium for illust in illusts]
