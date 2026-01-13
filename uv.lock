@@ -1477,6 +1477,7 @@ dependencies = [
     { name = "mijiaapi" },
     { name = "ncatbot" },
     { name = "pydantic-ai" },
+    { name = "python-dotenv" },
 ]
 
 [package.metadata]
@@ -1486,6 +1487,7 @@ requires-dist = [
     { name = "mijiaapi", specifier = ">=3.0.3" },
     { name = "ncatbot", specifier = ">=4.4.1.post1" },
     { name = "pydantic-ai", specifier = ">=1.40.0" },
+    { name = "python-dotenv", specifier = ">=1.2.1" },
 ]
 
 [[package]]

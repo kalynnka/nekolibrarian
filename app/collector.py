@@ -30,27 +30,31 @@ class MessageBatchHandler(Generic[TMessage, TResult]):
         self.handler = handler
         self.batch_delay = batch_delay
         self._messages: List[TMessage] = []
-        self._scheduled_task: Optional[asyncio.Task[None]] = None
+        self._scheduled_task: Optional[asyncio.Task[TResult]] = None
 
-    async def push(self, message: TMessage) -> None:
+    def push(
+        self, message: TMessage, handle: bool = True
+    ) -> Optional[asyncio.Task[TResult]]:
         """
         Push a message into the batcher.
         Messages are collected in order and will be consumed after batch_delay.
 
         Args:
             message: The message to collect
+            handle: Whether to schedule auto-consume (default True)
         """
         self._messages.append(message)
 
         # Schedule auto-consume if not already scheduled
         # No lock needed: asyncio is single-threaded, no context switch before task creation
-        if self._scheduled_task is None or self._scheduled_task.done():
+        if handle and (self._scheduled_task is None or self._scheduled_task.done()):
             self._scheduled_task = asyncio.create_task(self._schedule_consume())
+            return self._scheduled_task
 
-    async def _schedule_consume(self) -> None:
+    async def _schedule_consume(self) -> TResult:
         """Schedule consumption after the batch delay"""
         await asyncio.sleep(self.batch_delay)
-        await self.consume()
+        return await self.consume()
 
     async def consume(self) -> TResult:
         """
