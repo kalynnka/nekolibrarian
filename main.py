@@ -1,14 +1,18 @@
+import logging
+import pickle
 from collections import defaultdict, deque
 from functools import lru_cache
-from logging import warning
+from pathlib import Path
 from typing import DefaultDict, Deque, Dict, List
 
-from ncatbot.core import BotClient, GroupMessageEvent, PrivateMessage
+from ncatbot.core import BotClient, GroupMessageEvent, MetaEvent, PrivateMessage
+from pydantic_ai import ModelRequest
 from pydantic_ai.messages import ModelMessage
 
 from app import agents
 from app.collector import MessageBatchHandler
 
+logger = logging.getLogger("NekoLibrarian")
 bot = BotClient()
 
 
@@ -17,7 +21,8 @@ private_handlers: Dict[int, MessageBatchHandler[PrivateMessage, None]] = {}
 group_handlers: Dict[int, MessageBatchHandler[GroupMessageEvent, str]] = {}
 
 # TODO: persist chat memory to PG
-in_memory_memory: DefaultDict[int, Deque[list[ModelMessage]]] = defaultdict(
+MEMORY_FILE = Path("./data/chat_memory.pkl")
+in_memory_memory: DefaultDict[int, Deque[ModelMessage]] = defaultdict(
     lambda: deque(maxlen=10)
 )
 
@@ -34,9 +39,9 @@ def get_private_batcher(
             memories = in_memory_memory[int(user_id)]
             result = await agents.private.chat_agent.run(
                 user_prompt="\n".join([msg.raw_message for msg in messages]),
-                message_history=[msg for round in memories for msg in round],
+                message_history=memories,
             )
-            memories.append(result.new_messages())
+            memories.extend(result.new_messages())
             for msg in result.output:
                 if msg.strip():
                     await bot.api.post_private_msg(
@@ -61,15 +66,23 @@ def get_group_batcher(
 
         async def handle_batch(messages: List[GroupMessageEvent]):
             memories = in_memory_memory[int(group_id)]
-            result = await agents.group.chat_agent.run(
-                user_prompt="\n".join(
-                    [
-                        f"{msg.sender.card or 'anonymous'}: {msg.raw_message}"
-                        for msg in messages
-                    ]
+            last = messages.pop()
+            memories.extend(
+                (
+                    ModelRequest.user_text_prompt(
+                        "".join(
+                            f"{event.sender.card or event.sender.nickname or 'anonymous'}: {seg.text}"
+                            for seg in event.message.filter_text()
+                        )
+                    )
+                    for event in messages
                 )
             )
-            memories.append(result.new_messages())
+            result = await agents.group.chat_agent.run(
+                user_prompt=f"{last.sender.card or last.sender.nickname or 'anonymous'}: {last.raw_message}",
+                message_history=memories,
+            )
+            memories.extend(result.new_messages())
             return result.output
 
         group_handlers[int(group_id)] = MessageBatchHandler(
@@ -80,17 +93,17 @@ def get_group_batcher(
     return group_handlers[int(group_id)]
 
 
-def is_group_at(event) -> bool:
-    if not isinstance(event, GroupMessageEvent):
-        return False
-    bot_id = event.self_id
-    for message_spiece in event.message.messages:
-        if (
-            message_spiece.msg_seg_type == "at"
-            and getattr(message_spiece, "qq", None) == bot_id
-        ):
-            return True
-    return False
+# def is_group_at(event) -> bool:
+#     if not isinstance(event, GroupMessageEvent):
+#         return False
+#     bot_id = event.self_id
+#     for message_spiece in event.message.messages:
+#         if (
+#             message_spiece.msg_seg_type == "at"
+#             and getattr(message_spiece, "qq", None) == bot_id
+#         ):
+#             return True
+#     return False
 
 
 @bot.on_private_message()  # pyright: ignore[reportArgumentType]
@@ -99,19 +112,46 @@ async def handle_private_message(msg: PrivateMessage):
 
 
 @bot.on_group_message()  # pyright: ignore[reportArgumentType]
-async def handle_group_message(msg: GroupMessageEvent):
-    batch_handler = get_group_batcher(msg.group_id)
-    batch_handler.push(msg, handle=False)
-    if is_group_at(msg):
+async def handle_group_message(event: GroupMessageEvent):
+    batch_handler = get_group_batcher(event.group_id)
+    batch_handler.push(event, handle=False)
+    if event.message.is_user_at(user_id=event.self_id):
         reply = await batch_handler.consume()
         if not (reply := reply.strip()):
-            warning(f"Empty reply generated for group at message: {msg.raw_message}.")
+            logger.warning(
+                f"Empty reply generated for group at message: {event.raw_message}."
+            )
             return
         await bot.api.post_group_msg(
-            group_id=msg.group_id,
+            group_id=event.group_id,
             text=reply,
-            reply=msg.message_id,
+            reply=event.message_id,
         )
+
+
+@bot.on_startup()  # pyright: ignore[reportArgumentType]
+async def load_memories(metaevent: MetaEvent):
+    logger.info("Loading chat memories...")
+    if MEMORY_FILE.exists():
+        try:
+            with MEMORY_FILE.open("rb") as f:
+                loaded = pickle.load(f)
+                in_memory_memory.update(loaded)
+            logger.info(f"Loaded {len(loaded)} chat memories from {MEMORY_FILE}")
+        except Exception as e:
+            logger.warning(f"Failed to load chat memories: {e}")
+
+
+@bot.on_shutdown()  # pyright: ignore[reportArgumentType]
+async def save_memories(metaevent: MetaEvent):
+    logger.info("Saving chat memories...")
+    try:
+        MEMORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with MEMORY_FILE.open("wb") as f:
+            pickle.dump(dict(in_memory_memory), f)
+        logger.info(f"Saved {len(in_memory_memory)} chat memories to {MEMORY_FILE}")
+    except Exception as e:
+        logger.warning(f"Failed to save chat memories: {e}")
 
 
 if __name__ == "__main__":
