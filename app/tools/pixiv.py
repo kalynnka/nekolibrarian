@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Annotated, Literal, Optional
 
 from pixivpy_async import AppPixivAPI, PixivClient
 from pydantic import BaseModel
@@ -29,7 +29,7 @@ class PixivIllust(BaseModel):
     author_id: int
     tags: list[str]
     image_urls: PixivImageUrls
-    local_path: Path | None = None
+    local_path: Annotated[str, Path] | None = None
 
 
 class PixivSearchResult(BaseModel):
@@ -40,18 +40,17 @@ class PixivSearchResult(BaseModel):
 
 
 api = AppPixivAPI()
-
-global client
 client: Optional[PixivClient] = None
 
 
 async def login():
+    global client
     client = PixivClient()
     api.session = client.start()
     return await api.login(refresh_token=pixiv_config.refresh_token)
 
 
-async def download_image(image_url: str) -> Path | None:
+async def download_image(image_url: str) -> str | None:
     """
     Download image from Pixiv with local caching.
 
@@ -59,7 +58,7 @@ async def download_image(image_url: str) -> Path | None:
         image_url: The Pixiv image URL to download
 
     Returns:
-        Path to the local image file, or None if download failed
+        Path to the local image file as string, or None if download failed
     """
     # Extract filename from URL (e.g., 12345678_p0.jpg)
     cache_path = pixiv_config.image_dir / image_url.split("/")[-1]
@@ -67,7 +66,7 @@ async def download_image(image_url: str) -> Path | None:
     # Check cache first
     if cache_path.exists():
         logger.debug(f"Image cache hit: {cache_path}")
-        return cache_path
+        return str(cache_path)
 
     # Ensure directory exists
     pixiv_config.image_dir.mkdir(parents=True, exist_ok=True)
@@ -79,7 +78,7 @@ async def download_image(image_url: str) -> Path | None:
             name=cache_path.name,
         )
         logger.info(f"Downloaded image: {cache_path}")
-        return cache_path
+        return str(cache_path)
     except Exception as e:
         logger.warning(f"Failed to download image {image_url}: {e}")
         return None

@@ -20,7 +20,7 @@ from app.agents.group import MessageSegment
 from app.collector import MessageBatchHandler
 from app.configs import config
 from app.database import async_session_factory
-from app.memory import load_group_memories, persist_model_messages
+from app.memory import persist_model_messages
 from app.schemas import (
     Message,
     ModelMessage,
@@ -54,13 +54,6 @@ def get_group_chat_batcher(
 
         async def handle_batch(messages: list[GroupMessageEvent]):
             memories = in_memory_memory[int(group_id)]
-
-            # if the memory is empty, try finding some from database
-            if not memories:
-                loaded_memories = await load_group_memories(
-                    int(group_id), config.memory_groups_count
-                )
-                memories.extend(loaded_memories)
 
             last = messages.pop()
             buffered: list[ModelMessage] = [
@@ -180,9 +173,6 @@ async def main():
             logger.info("Pixiv login complete.")
 
             ncatbot_config.validate_config()
-
-            # 加载插件
-
             bot.event_bus = EventBus()
             bot.plugin_loader = PluginLoader(bot.event_bus, debug=ncatbot_config.debug)
 
@@ -199,11 +189,14 @@ async def main():
             logger.error(f"Bot crashed with error: {e}")
             raise
         finally:
-            bot.bot_exit()
             if pixiv.client:
                 logger.info("Closing Pixiv client...")
                 await pixiv.client.close()
                 logger.info("Pixiv client closed.")
+            if bot._running:
+                await bot.plugin_loader.unload_all()
+                await bot.adapter.cleanup()
+            logger.info("Bot exit gracefully.")
 
 
 if __name__ == "__main__":

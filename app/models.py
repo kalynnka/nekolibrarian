@@ -5,7 +5,7 @@ from typing import Any, Optional
 from uuid import UUID
 
 from arcanus.base import TransmuterProxiedMixin
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, Uuid, func
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import TypeDecorator
@@ -48,8 +48,8 @@ class Message(Base):
     id: Mapped[UUID] = mapped_column(
         Uuid, primary_key=True, server_default=func.uuidv7()
     )
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    group_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     timestamp: Mapped[datetime] = mapped_column(
@@ -82,8 +82,8 @@ class ModelMessage(Base):
     )
 
     # User and group identifiers
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    group_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    group_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
     # Discriminator column for inheritance
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
