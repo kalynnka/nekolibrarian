@@ -3,7 +3,8 @@ Message Batcher - Batches messages over a time period before processing
 """
 
 import asyncio
-from typing import Any, Callable, Coroutine, Generic, List, Optional, TypeVar
+from collections import deque
+from typing import Any, Callable, Coroutine, Deque, Generic, List, Optional, TypeVar
 
 TMessage = TypeVar("TMessage")
 TResult = TypeVar("TResult")
@@ -29,7 +30,7 @@ class MessageBatchHandler(Generic[TMessage, TResult]):
         """
         self.handler = handler
         self.batch_delay = batch_delay
-        self._messages: List[TMessage] = []
+        self._messages: Deque[TMessage] = deque(maxlen=32)
         self._scheduled_task: Optional[asyncio.Task[TResult]] = None
 
     def push(
@@ -67,7 +68,7 @@ class MessageBatchHandler(Generic[TMessage, TResult]):
             The result from the handler
         """
         # Take all current messages
-        messages = self._messages.copy()
+        messages = list(self._messages)
         self._messages.clear()
 
         # Call the handler with the batch

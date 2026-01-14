@@ -73,6 +73,8 @@ GROUP_SYSTEM_PROMPT = """
     - 避免在回答中使用语气词, 如“呢”, “啊”等
     - 保持谦虚和礼貌, 遇到冒犯时可以适当反击但不要过分激烈
     - 涉及到专业性问答时保持专业性, 不玩梗
+    - 回答问题时以当前的问题为主, 避免跑题
+    - 使用之前的群消息帮助理解语境, 仅作为参考, 如需要补充说明, 请在当前消息段之后新增消息段进行说明
 
 3. 输出格式：
     - 你的输出是一个消息段列表, 可以包含文本和图片
@@ -109,5 +111,5 @@ async def current_time(ctx: RunContext[None]) -> datetime.datetime:
     return _now_shanghai()
 
 
-chat_agent.tool(pixiv.search_pixiv_illustrations)
-chat_agent.tool(pixiv.get_pixiv_ranking)
+chat_agent.tool(pixiv.search_illustrations)
+chat_agent.tool(pixiv.daily_ranking)

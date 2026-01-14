@@ -5,7 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "alembic>=1.18.0",
     "arcanus>=0.1.0",
+    "asyncpg>=0.31.0",
     "mijiaapi>=3.0.3",
     "ncatbot>=4.4.1.post1",
     "pixivpy-async>=1.2.14",

@@ -34,14 +34,14 @@ class NcatBotConfig(BaseSettings):
 
     # Database
     postgres_dsn: Annotated[str, PostgresDsn] = (
-        r"postgresql+asyncpg://postgres:postgres@localhost:5432/nekolibrarian"
+        r"postgresql+asyncpg://postgres:postgres@postgres:5432/postgres"
     )
 
     # Batch handler settings
     batch_handler_lru_size: int = 32
 
     # In-memory message history length
-    memory_message_length: int = 16
+    memory_groups_count: int = 16
 
 
 # Module-level singletons

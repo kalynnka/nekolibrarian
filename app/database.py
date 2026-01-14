@@ -10,6 +10,8 @@ engine: AsyncEngine = create_async_engine(
     str(config.postgres_dsn),
     echo=False,
     pool_pre_ping=True,
+    pool_size=8,
+    max_overflow=16,
 )
 
 # Create async session factory using arcanus's AsyncSession

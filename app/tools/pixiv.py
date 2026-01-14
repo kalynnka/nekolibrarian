@@ -85,7 +85,7 @@ async def download_image(image_url: str) -> Path | None:
         return None
 
 
-async def search_pixiv_illustrations(
+async def search_illustrations(
     ctx: RunContext[None], keyword: str, limit: int = 3
 ) -> PixivSearchResult:
     """
@@ -132,7 +132,7 @@ async def search_pixiv_illustrations(
     return PixivSearchResult(query=keyword, illusts=output)
 
 
-async def get_pixiv_ranking(
+async def daily_ranking(
     ctx: RunContext[None],
     mode: Literal["day", "week", "month", "day_male", "day_female", "day_r18"] = "day",
     limit: int = 5,

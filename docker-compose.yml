@@ -52,10 +52,30 @@ services:
       - ./ntqq:/app/.config/QQ
     networks:
       - neko_librarian
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    ports:
+      - 8082:80
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+      - ./pgadmin-servers.json:/pgadmin4/servers.json
+    networks:
+      - neko_librarian
+    depends_on:
+      - postgres
     
 
 volumes:
   postgres-data:
+    driver: local
+  pgadmin-data:
     driver: local
 networks:
   neko_librarian:
