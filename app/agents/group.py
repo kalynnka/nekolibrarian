@@ -9,7 +9,7 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.gemini import GeminiModelSettings
 
 from app.schemas import _now_shanghai
-from app.tools import pixiv
+from app.tools import pixiv, qweather
 
 # Load environment variables from .env file
 load_dotenv()
@@ -113,3 +113,4 @@ async def current_time(ctx: RunContext[None]) -> datetime.datetime:
 
 chat_agent.tool(pixiv.search_illustrations)
 chat_agent.tool(pixiv.daily_ranking)
+chat_agent.tool(qweather.get_weather)

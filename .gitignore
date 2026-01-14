@@ -16,6 +16,9 @@ data/
 # pixiv
 pixiv/
 
+# qweather
+qweather/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
