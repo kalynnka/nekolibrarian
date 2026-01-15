@@ -8,8 +8,9 @@ from pydantic import BaseModel
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.gemini import GeminiModelSettings
 
+from app.agents.deps import GroupChatDeps
 from app.schemas import _now_shanghai
-from app.tools import pixiv, qweather
+from app.tools import memory, pixiv, qweather
 
 # Load environment variables from .env file
 load_dotenv()
@@ -92,6 +93,7 @@ chat_agent = Agent(
     model="google-gla:gemini-3-flash-preview",
     system_prompt=GROUP_SYSTEM_PROMPT,
     output_type=list[MessageSegment],
+    deps_type=GroupChatDeps,
     model_settings=GeminiModelSettings(
         temperature=1.2,
         gemini_thinking_config={"thinking_budget": 1024},
@@ -101,7 +103,7 @@ chat_agent = Agent(
 
 
 @chat_agent.tool
-async def current_time(ctx: RunContext[None]) -> datetime.datetime:
+async def current_time(ctx: RunContext[GroupChatDeps]) -> datetime.datetime:
     """
     Get the current date and time.
 
@@ -114,3 +116,4 @@ async def current_time(ctx: RunContext[None]) -> datetime.datetime:
 chat_agent.tool(pixiv.search_illustrations)
 chat_agent.tool(pixiv.daily_ranking)
 chat_agent.tool(qweather.get_weather)
+chat_agent.tool(memory.get_recent_chat_history)

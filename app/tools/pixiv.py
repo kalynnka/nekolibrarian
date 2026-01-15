@@ -7,6 +7,7 @@ from pixivpy_async import AppPixivAPI, PixivClient
 from pydantic import BaseModel
 from pydantic_ai import RunContext
 
+from app.agents.deps import GroupChatDeps
 from app.configs import pixiv_config
 
 logger = logging.getLogger("pixiv")
@@ -85,7 +86,7 @@ async def download_image(image_url: str) -> str | None:
 
 
 async def search_illustrations(
-    ctx: RunContext[None], keyword: str, limit: int = 3
+    ctx: RunContext[GroupChatDeps], keyword: str, limit: int = 3
 ) -> PixivSearchResult:
     """
     Search illustrations on Pixiv by keyword/tag.
@@ -132,7 +133,7 @@ async def search_illustrations(
 
 
 async def daily_ranking(
-    ctx: RunContext[None],
+    ctx: RunContext[GroupChatDeps],
     mode: Literal["day", "week", "month", "day_male", "day_female", "day_r18"] = "day",
     limit: int = 5,
 ) -> PixivSearchResult:

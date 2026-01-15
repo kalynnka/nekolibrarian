@@ -20,7 +20,6 @@ from app.agents.group import MessageSegment
 from app.collector import MessageBatchHandler
 from app.configs import config
 from app.database import async_session_factory
-from app.memory import persist_model_messages
 from app.schemas import (
     Message,
     ModelMessage,
@@ -29,6 +28,7 @@ from app.schemas import (
     sqlalchemy_materia,
 )
 from app.tools import pixiv
+from app.tools.memory import persist_model_messages
 
 logger = logging.getLogger("NekoLibrarian")
 bot = BotClient()
@@ -73,6 +73,10 @@ def get_group_chat_batcher(
             result = await agents.group.chat_agent.run(
                 user_prompt=f"{last.sender.card or last.sender.nickname or 'anonymous'}: {last.raw_message}",
                 message_history=[message for memory in memories for message in memory],  # pyright: ignore[reportArgumentType]
+                deps=agents.group.GroupChatDeps(
+                    user_id=int(last.user_id),
+                    group_id=int(group_id),
+                ),
             )
 
             new = []

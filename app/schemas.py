@@ -32,6 +32,12 @@ def _now_shanghai() -> datetime:
 class Message(BaseTransmuter):
     """Transmuter for Message - binds to SQLAlchemy ORM."""
 
+    model_config = ConfigDict(
+        from_attributes=True,
+        ser_json_bytes="base64",
+        val_json_bytes="base64",
+    )
+
     id: Annotated[Optional[UUID], Identity] = Field(default=None, frozen=True)
     user_id: int
     group_id: Optional[int] = None

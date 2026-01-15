@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives import serialization
 from pydantic import BaseModel
 from pydantic_ai import RunContext
 
+from app.agents.deps import GroupChatDeps
 from app.configs import qweather_config
 
 logger = logging.getLogger("qweather")
@@ -153,7 +154,7 @@ def _format_forecast(forecast: WeatherForecastResult) -> str:
 
 
 async def get_weather(
-    ctx: RunContext,
+    ctx: RunContext[GroupChatDeps],
     location: str | None = None,
     days: Literal["3d", "7d"] = "3d",
 ) -> str:
