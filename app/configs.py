@@ -18,8 +18,8 @@ class PixivConfig(BaseSettings):
     )
 
     refresh_token: SecretStr = SecretStr("")
-    search_limit: int = 3
-    ranking_limit: int = 5
+    search_limit: int = 8
+    ranking_limit: int = 8
     image_dir: Path = Path("./pixiv/images")
 
 

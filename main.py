@@ -10,6 +10,7 @@ from ncatbot.core import (
     BotClient,
     GroupMessageEvent,
     PrivateMessage,
+    Text,
 )
 from ncatbot.core.adapter import launch_napcat_service
 from ncatbot.core.event.message_segment import MessageArray
@@ -33,6 +34,10 @@ from app.tools.memory import persist_model_messages
 
 logger = logging.getLogger("NekoLibrarian")
 bot = BotClient()
+
+
+class TrafficLimitError(Exception):
+    """Raised when LLM service is temporarily unavailable due to high traffic."""
 
 
 # Store a batcher for each user
@@ -71,14 +76,32 @@ def get_group_chat_batcher(
             await persist_model_messages(buffered)
             memories.append(buffered)
 
-            result = await agents.group.chat_agent.run(
-                user_prompt=f"{last.sender.card or last.sender.nickname or 'anonymous'}: {last.raw_message}",
-                message_history=[message for memory in memories for message in memory],  # pyright: ignore[reportArgumentType]
-                deps=agents.group.GroupChatDeps(
-                    user_id=int(last.user_id),
-                    group_id=int(group_id),
-                ),
-            )
+            # Retry logic for Gemini traffic issues (503)
+            max_retries = 2
+            last_error = None
+            for attempt in range(max_retries + 1):
+                try:
+                    result = await agents.group.chat_agent.run(
+                        user_prompt=f"{last.sender.card or last.sender.nickname or 'anonymous'}: {last.raw_message}",
+                        message_history=[message for memory in memories for message in memory],  # pyright: ignore[reportArgumentType]
+                        deps=agents.group.GroupChatDeps(
+                            user_id=int(last.user_id),
+                            group_id=int(group_id),
+                        ),
+                    )
+                    break  # Success, exit retry loop
+                except Exception as e:
+                    last_error = e
+                    # Check if it's a 503 traffic error
+                    if "503" in str(e) or "UNAVAILABLE" in str(e):
+                        if attempt < max_retries:
+                            logger.warning(f"Gemini traffic issue (attempt {attempt + 1}/{max_retries + 1}), retrying...")
+                            await asyncio.sleep(2 ** attempt)  # Exponential backoff: 1s, 2s
+                            continue
+                        else:
+                            logger.error(f"Gemini traffic issue after {max_retries + 1} attempts")
+                            raise TrafficLimitError("LLM服务暂时繁忙，请稍后再试") from e
+                    raise  # Re-raise non-traffic errors immediately
 
             new = []
             for message in result.new_messages():
@@ -120,6 +143,13 @@ def get_group_chat_batcher(
 async def handle_group_message(event: GroupMessageEvent):
     try:
         await _handle_group_message_impl(event)
+    except TrafficLimitError as e:
+        logger.warning(f"Traffic limit hit for group {event.group_id}: {e}")
+        await bot.api.post_group_msg(
+            group_id=event.group_id,
+            rtf=MessageArray([Text(str(e))]),
+            reply=event.message_id,
+        )
     except Exception as e:
         logger.error(f"Unhandled exception in group message handler: {e}", stack_info=True)
 
