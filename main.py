@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+import traceback
 from collections import defaultdict, deque
 from functools import lru_cache
 from typing import DefaultDict, Deque
@@ -37,7 +38,7 @@ bot = BotClient()
 # Store a batcher for each user
 private_handlers: dict[int, MessageBatchHandler[PrivateMessage, None]] = {}
 group_handlers: dict[
-    int, MessageBatchHandler[GroupMessageEvent, list[MessageSegment]]
+    int, MessageBatchHandler[GroupMessageEvent, list[MessageSegment] | None]
 ] = {}
 
 in_memory_memory: DefaultDict[int, Deque[list[ModelMessage]]] = defaultdict(
@@ -48,8 +49,8 @@ in_memory_memory: DefaultDict[int, Deque[list[ModelMessage]]] = defaultdict(
 @lru_cache(maxsize=config.batch_handler_lru_size)
 def get_group_chat_batcher(
     group_id: int | str,
-) -> MessageBatchHandler[GroupMessageEvent, list]:
-    """Get or create a batcher for a specific group""" ""
+) -> MessageBatchHandler[GroupMessageEvent, list[MessageSegment] | None]:
+    """Get or create a batcher for a specific group."""
     if group_id not in group_handlers:
 
         async def handle_batch(messages: list[GroupMessageEvent]):
@@ -117,6 +118,13 @@ def get_group_chat_batcher(
 
 @bot.on_group_message()  # pyright: ignore[reportArgumentType]
 async def handle_group_message(event: GroupMessageEvent):
+    try:
+        await _handle_group_message_impl(event)
+    except Exception as e:
+        logger.error(f"Unhandled exception in group message handler: {e}", stack_info=True)
+
+
+async def _handle_group_message_impl(event: GroupMessageEvent):
     batch_chat_handler = get_group_chat_batcher(event.group_id)
     batch_chat_handler.push(event, handle=False)
 
@@ -173,7 +181,7 @@ async def main():
     with sqlalchemy_materia:
         try:
             logger.info("Logging into Pixiv...")
-            await pixiv.login()
+            await pixiv.token_manager.login()
             logger.info("Pixiv login complete.")
 
             ncatbot_config.validate_config()
@@ -195,7 +203,7 @@ async def main():
         finally:
             if pixiv.client:
                 logger.info("Closing Pixiv client...")
-                await pixiv.client.close()
+                await pixiv.token_manager.close()
                 logger.info("Pixiv client closed.")
             if bot._running:
                 await bot.plugin_loader.unload_all()

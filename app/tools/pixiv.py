@@ -1,7 +1,10 @@
 import asyncio
+import functools
 import logging
+import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal, ParamSpec, TypeVar
 
 from pixivpy_async import AppPixivAPI, PixivClient
 from pydantic import BaseModel
@@ -11,6 +14,83 @@ from app.agents.deps import GroupChatDeps
 from app.configs import pixiv_config
 
 logger = logging.getLogger("pixiv")
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+TOKEN_REFRESH_INTERVAL = 15 * 60  # 15 minutes in seconds
+
+
+class PixivTokenManager:
+    """Manages Pixiv API authentication with automatic token refresh."""
+
+    def __init__(self) -> None:
+        self.client: PixivClient | None = None
+        self.api = AppPixivAPI()
+        self._last_login: float = 0
+        self._lock = asyncio.Lock()
+
+    def _needs_refresh(self) -> bool:
+        """Check if token needs refresh (every 15 minutes)."""
+        return time.time() - self._last_login > TOKEN_REFRESH_INTERVAL
+
+    async def ensure_auth(self) -> None:
+        """Ensure API is authenticated, refreshing if needed."""
+        async with self._lock:
+            if self._needs_refresh():
+                await self.login()
+
+    async def login(self) -> None:
+        """Perform login to refresh token."""
+        logger.info("Refreshing Pixiv token...")
+        try:
+            if self.client is None:
+                self.client = PixivClient()
+                self.api.session = self.client.start()
+            await self.api.login(
+                refresh_token=pixiv_config.refresh_token.get_secret_value()
+            )
+            self._last_login = time.time()
+            logger.info("Pixiv token refreshed successfully")
+        except Exception as e:
+            logger.error(f"Pixiv login failed: {e}")
+            raise
+
+    async def refresh_and_retry(self) -> None:
+        """Force refresh token (used after API failure)."""
+        async with self._lock:
+            self._last_login = 0  # Force refresh
+            await self.login()
+
+    async def close(self) -> None:
+        """Close the Pixiv client session."""
+        if self.client is not None:
+            await self.client.close()
+            self.client = None
+            logger.info("Pixiv client session closed")
+
+
+token_manager = PixivTokenManager()
+api = token_manager.api
+client = token_manager.client  # Expose client for cleanup
+
+
+def with_auto_refresh(
+    func: Callable[P, Awaitable[R]],
+) -> Callable[P, Awaitable[R]]:
+    """Decorator that ensures auth and retries once on failure."""
+
+    @functools.wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        await token_manager.ensure_auth()
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            logger.warning(f"Pixiv API call failed, retrying after refresh: {e}")
+            await token_manager.refresh_and_retry()
+            return await func(*args, **kwargs)
+
+    return wrapper
 
 
 class PixivImageUrls(BaseModel):
@@ -40,17 +120,6 @@ class PixivSearchResult(BaseModel):
     illusts: list[PixivIllust]
 
 
-api = AppPixivAPI()
-client: Optional[PixivClient] = None
-
-
-async def login():
-    global client
-    client = PixivClient()
-    api.session = client.start()
-    return await api.login(refresh_token=pixiv_config.refresh_token)
-
-
 async def download_image(image_url: str) -> str | None:
     """
     Download image from Pixiv with local caching.
@@ -73,7 +142,7 @@ async def download_image(image_url: str) -> str | None:
     pixiv_config.image_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        await api.download(
+        await token_manager.api.download(
             image_url,
             path=str(pixiv_config.image_dir),
             name=cache_path.name,
@@ -85,6 +154,7 @@ async def download_image(image_url: str) -> str | None:
         return None
 
 
+@with_auto_refresh
 async def search_illustrations(
     ctx: RunContext[GroupChatDeps], keyword: str, limit: int = 3
 ) -> PixivSearchResult:
@@ -99,7 +169,7 @@ async def search_illustrations(
     Returns:
         PixivSearchResult containing illustration metadata and local file paths
     """
-    result = await api.search_illust(keyword, search_target="partial_match_for_tags")
+    result = await token_manager.api.search_illust(keyword, search_target="partial_match_for_tags")
 
     if not result.illusts:
         return PixivSearchResult(query=keyword, illusts=[])
@@ -132,6 +202,7 @@ async def search_illustrations(
     return PixivSearchResult(query=keyword, illusts=output)
 
 
+@with_auto_refresh
 async def daily_ranking(
     ctx: RunContext[GroupChatDeps],
     mode: Literal["day", "week", "month", "day_male", "day_female", "day_r18"] = "day",
@@ -158,7 +229,7 @@ async def daily_ranking(
         "day_r18": "R18日榜",
     }
 
-    result = await api.illust_ranking(mode)
+    result = await token_manager.api.illust_ranking(mode)
 
     if not result.illusts:
         return PixivSearchResult(query=mode_names.get(mode, mode), illusts=[])

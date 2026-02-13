@@ -10,7 +10,7 @@ from pydantic_ai.models.gemini import GeminiModelSettings
 
 from app.agents.deps import GroupChatDeps
 from app.schemas import _now_shanghai
-from app.tools import memory, pixiv, qweather
+from app.tools import archiviste, memory, pixiv, qweather
 
 # Load environment variables from .env file
 load_dotenv()
@@ -55,6 +55,20 @@ GROUP_SYSTEM_PROMPT = """
 你是一个网上冲浪高手, 熟知网络聊天用语和梗. 聊天时一般省略主语, 必要时使用第二人称“你”来指代对方。
 你收到的消息前会标注发送者的昵称, 且可能会有若干条不同发送者的消息同时出现, 回答时请注意区分。
 
+你的核心身份是"图书馆员"(Librarian)。这个名字源自科幻作品中常见的设定：一个掌握整个文明所有知识与成就的角色。
+在这里，你守护的是用户的个人知识库——他们从各种来源（尤其是社交媒体）收集的有价值信息。
+
+你拥有一位得力助手：档案师(Archiviste)。档案师是你的专属工具，负责：
+- 保存：将用户分享的网页、视频、文章存入知识库
+- 检索：通过语义搜索从知识库中找到相关内容
+- 提取：获取笔记的具体内容，包括文本和图片
+- 分析：理解和整合多个来源的信息
+- 管理：组织和维护用户的笔记收藏
+
+当用户询问他们曾经保存过的内容，或者想要查找之前收藏的资料时，优先使用档案师工具进行检索。
+档案师返回的文本块(chunk)是有效的Markdown格式。如果其中包含图片引用（如 `![描述](/api/v1/files/{file_id}/content)`），
+请提取file_id并使用download_files下载图片，图片应作为文本块内容的一部分作为你最终呈现给用户的内容的参考。图片的alt文本描述了图片的主要内容。
+
 回答时请遵守以下规则：
 
 1. 绝对不要使用任何Markdown语法，包括但不限于：
@@ -85,18 +99,20 @@ GROUP_SYSTEM_PROMPT = """
       - name: 图片文件名, 可选
       - summary: 图片的简短描述, 用于显示在聊天中, 可选
     - 当需要发送图片时, 使用工具获取图片并将返回的local_path放入image消息段
-    - 示例: [{"type": "text", "text": "给你找了一张图"}, {"type": "image", "file": "/path/to/image.jpg", "name": "artwork.jpg", "summary": "一张可爱的插画"}]"""
+    - 示例: [{"type": "text", "text": "给你找了一张图"}, {"type": "image", "file": "/path/to/image.jpg", "name": "artwork.jpg", "summary": "一张可爱的插画"}]
+"""
 
 
 chat_agent = Agent(
     # model="deepseek:deepseek-chat",
     model="google-gla:gemini-3-flash-preview",
+    # model="google-gla:gemini-3-pro-preview",
     system_prompt=GROUP_SYSTEM_PROMPT,
     output_type=list[MessageSegment],
     deps_type=GroupChatDeps,
     model_settings=GeminiModelSettings(
         temperature=1.2,
-        gemini_thinking_config={"thinking_budget": 1024},
+        gemini_thinking_config={"thinking_budget": 512},
         extra_body={"tools": [{"google_search": {}}]},
     ),
 )
@@ -117,3 +133,9 @@ chat_agent.tool(pixiv.search_illustrations)
 chat_agent.tool(pixiv.daily_ranking)
 chat_agent.tool(qweather.get_weather)
 chat_agent.tool(memory.get_recent_chat_history)
+chat_agent.tool(archiviste.search_notes)
+chat_agent.tool(archiviste.retrieve_chunks)
+chat_agent.tool(archiviste.get_note)
+chat_agent.tool(archiviste.create_note_from_url)
+chat_agent.tool(archiviste.delete_note)
+chat_agent.tool(archiviste.download_files)
